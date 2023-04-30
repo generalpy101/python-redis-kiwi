@@ -1,19 +1,42 @@
+import json
+
 import redis
-from flask import Flask, Response, request
+from flask import Flask, Response, jsonify, request
+from werkzeug.exceptions import BadRequest, HTTPException
 
 app = Flask(__name__)
 redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+
+@app.errorhandler(HTTPException)
+def handle_http_exceptions(err):
+    """
+    Custom handler for HTTP exceptions.
+    Returns JSON output instead of HTML.
+    """
+    response = err.get_response()
+    payload = {"status_code": err.code, "error": err.name, "message": err.description}
+    response.data = json.dumps(payload)
+    response.content_type = "application/json"
+    return response
+
+
+class KeyNotFound(HTTPException):
+    code = 404
+    description = "No such key exists"
 
 
 @app.route("/get", methods=["GET"])
 def get_keys():
     key = request.args.get("key")
     if not key:
-        return Response("No key provided", status=400)
+        payload = {"error": "No key provided", "status_code": "400"}
+        return jsonify(payload), 400
     value = redis_client.get(key)
     if not value:
-        return Response("No value found", status=404)
-    return Response(value, status=200)
+        raise KeyNotFound
+    payload = {f"{key}": value, "status_code": 200}
+    return jsonify(payload)
 
 
 @app.route("/set", methods=["POST"])
@@ -24,13 +47,15 @@ def set_keys():
         value = data.get("value")
 
         if not key or not value:
-            return Response("No key or value provided", status=400)
+            payload = {"error": "No key or value provided", "status_code": 400}
+            return jsonify(payload), 400
 
         redis_client.set(key, value)
         return Response(f"{key}:{value}")
-    except Exception as e:
+    except BadRequest as e:
         print(e)
-        return Response(f"Server error occure: {e}", status=500)
+        payload = {"error": e.description, "status_code": 400}
+        return jsonify(payload), 400
 
 
 @app.route("/delete", methods=["DELETE"])
@@ -44,13 +69,14 @@ def delete_keys():
 
         status = redis_client.delete(key)
         if not status:
-            return Response("No such key found", status=404)
+            raise KeyNotFound
 
         return Response(f"{key} deleted")
 
-    except Exception as e:
+    except BadRequest as e:
         print(e)
-        return Response(f"Server error occured: {e}", status=500)
+        payload = {"error": e.description, "status_code": 400}
+        return jsonify(payload), 400
 
 
 if __name__ == "__main__":
