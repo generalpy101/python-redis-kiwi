@@ -49,35 +49,47 @@ def get_keys():
 def set_keys():
     try:
         data = request.get_json()
-        key = data.get("key")
-        value = data.get("value")
+        print(data)
 
-        if not key or not value:
-            payload = {"error": "No key or value provided", "status_code": 400}
+        if not data:
+            payload = {"error": "No key values pairs provided", "status_code": 400}
             return jsonify(payload), 400
 
-        redis_client.set(key, value)
-        return Response(f"{key}:{value}")
+        for key, value in data.items():
+            status = redis_client.set(key, value)
+            if not status:
+                payload = {
+                    "error": "Server Error",
+                    "description": f"Error while writing pair f{key}:f{value}",
+                    "status_code": 500,
+                }
+                return jsonify(payload), 500
+
+        payload = dict(data)
+        payload["status_code"] = 200
+        return jsonify(payload)
+
     except BadRequest as e:
         print(e)
         payload = {"error": e.description, "status_code": 400}
         return jsonify(payload), 400
 
 
-@app.route("/delete", methods=["DELETE"])
+@app.route("/delete", methods=["POST"])
 def delete_keys():
     try:
         data = request.get_json()
-        key = data.get("key")
+        keys = data.get("keys")
 
-        if not key:
-            return Response("No key provided", status=400)
+        if not keys:
+            return Response("No keys provided to delete", status=400)
 
-        status = redis_client.delete(key)
-        if not status:
-            raise KeyNotFound
+        resp = {}
+        for key in keys:
+            status = redis_client.delete(key)
+            resp[key] = bool(status)
 
-        return Response(f"{key} deleted")
+        return jsonify(resp)
 
     except BadRequest as e:
         print(e)
