@@ -208,3 +208,4 @@ dist/**
 package.nls.*.json
 l10n/
 *isort*
+dump.rdb

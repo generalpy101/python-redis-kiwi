@@ -28,14 +28,20 @@ class KeyNotFound(HTTPException):
 
 @app.route("/get", methods=["GET"])
 def get_keys():
-    key = request.args.get("key")
-    if not key:
-        payload = {"error": "No key provided", "status_code": "400"}
+    keys = request.args.get("keys")
+    if not keys:
+        payload = {"error": "No keys provided", "status_code": "400"}
         return jsonify(payload), 400
-    value = redis_client.get(key)
-    if not value:
-        raise KeyNotFound
-    payload = {f"{key}": value, "status_code": 200}
+    keys = keys.split(",")
+    values = []
+    for key in keys:
+        value = redis_client.get(key)
+        if value:
+            values.append(value)
+        else:
+            values.append(None)
+
+    payload = {k: v for k, v in zip(keys, values)}
     return jsonify(payload)
 
 
