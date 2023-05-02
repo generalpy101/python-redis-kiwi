@@ -64,6 +64,6 @@ repos:
       always_run: true
       args:
         [
-            "-vv",
+            "-vvv",
             "--cov"
         ]
