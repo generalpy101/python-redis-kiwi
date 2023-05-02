@@ -26,6 +26,20 @@ class KeyNotFound(HTTPException):
     description = "No such key exists"
 
 
+@app.route("/all", methods=["GET"])
+def get_all_pairs():
+    resp = {}
+    keys = redis_client.keys()
+    for key in keys:
+        key_type = redis_client.type(key)
+        if key_type == "hash":
+            value = redis_client.hgetall(key)
+        else:
+            value = redis_client.get(key)
+        resp[key] = value
+    return jsonify(resp)
+
+
 @app.route("/get", methods=["GET"])
 def get_keys():
     keys = request.args.get("keys")
@@ -35,7 +49,11 @@ def get_keys():
     keys = keys.split(",")
     values = []
     for key in keys:
-        value = redis_client.get(key)
+        key_type = redis_client.type(key)
+        if key_type == "hash":
+            value = redis_client.hgetall(key)
+        else:
+            value = redis_client.get(key)
         if value:
             values.append(value)
         else:
@@ -55,19 +73,16 @@ def set_keys():
             payload = {"error": "No key values pairs provided", "status_code": 400}
             return jsonify(payload), 400
 
-        for key, value in data.items():
-            status = redis_client.set(key, value)
-            if not status:
-                payload = {
-                    "error": "Server Error",
-                    "description": f"Error while writing pair f{key}:f{value}",
-                    "status_code": 500,
-                }
-                return jsonify(payload), 500
+        resp = {}
 
-        payload = dict(data)
-        payload["status_code"] = 200
-        return jsonify(payload)
+        for key, value in data.items():
+            if type(value) == dict:
+                status = redis_client.hset(key, mapping=value)
+            else:
+                status = redis_client.set(key, value)
+            resp[key] = status
+
+        return jsonify(resp)
 
     except BadRequest as e:
         print(e)
