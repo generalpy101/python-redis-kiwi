@@ -1,116 +1,22 @@
 import json
 
 import redis
-from flask import Flask, Response, jsonify, request
-from werkzeug.exceptions import BadRequest, HTTPException
+from flask import Flask
 
-app = Flask(__name__)
-redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+from rest_kv.api import api_bp
 
 
-@app.errorhandler(HTTPException)
-def handle_http_exceptions(err):
-    """
-    Custom handler for HTTP exceptions.
-    Returns JSON output instead of HTML.
-    """
-    response = err.get_response()
-    payload = {"status_code": err.code, "error": err.name, "message": err.description}
-    response.data = json.dumps(payload)
-    response.content_type = "application/json"
-    return response
-
-
-class KeyNotFound(HTTPException):
-    code = 404
-    description = "No such key exists"
-
-
-@app.route("/all", methods=["GET"])
-def get_all_pairs():
-    resp = {}
-    keys = redis_client.keys()
-    for key in keys:
-        key_type = redis_client.type(key)
-        if key_type == "hash":
-            value = redis_client.hgetall(key)
-        else:
-            value = redis_client.get(key)
-        resp[key] = value
-    return jsonify(resp)
-
-
-@app.route("/get", methods=["GET"])
-def get_keys():
-    keys = request.args.get("keys")
-    if not keys:
-        payload = {"error": "No keys provided", "status_code": "400"}
-        return jsonify(payload), 400
-    keys = keys.split(",")
-    values = []
-    for key in keys:
-        key_type = redis_client.type(key)
-        if key_type == "hash":
-            value = redis_client.hgetall(key)
-        else:
-            value = redis_client.get(key)
-        if value:
-            values.append(value)
-        else:
-            values.append(None)
-
-    payload = {k: v for k, v in zip(keys, values)}
-    return jsonify(payload)
-
-
-@app.route("/set", methods=["POST"])
-def set_keys():
-    try:
-        data = request.get_json()
-        print(data)
-
-        if not data:
-            payload = {"error": "No key values pairs provided", "status_code": 400}
-            return jsonify(payload), 400
-
-        resp = {}
-
-        for key, value in data.items():
-            if type(value) == dict:
-                status = redis_client.hset(key, mapping=value)
-            else:
-                status = redis_client.set(key, value)
-            resp[key] = status
-
-        return jsonify(resp)
-
-    except BadRequest as e:
-        print(e)
-        payload = {"error": e.description, "status_code": 400}
-        return jsonify(payload), 400
-
-
-@app.route("/delete", methods=["POST"])
-def delete_keys():
-    try:
-        data = request.get_json()
-        keys = data.get("keys")
-
-        if not keys:
-            return Response("No keys provided to delete", status=400)
-
-        resp = {}
-        for key in keys:
-            status = redis_client.delete(key)
-            resp[key] = bool(status)
-
-        return jsonify(resp)
-
-    except BadRequest as e:
-        print(e)
-        payload = {"error": e.description, "status_code": 400}
-        return jsonify(payload), 400
+def create_app(redis_client=None):
+    app = Flask(__name__)
+    if redis_client is None:
+        redis_client = redis.Redis(
+            host="localhost", port=6379, decode_responses=True, db=0
+        )
+    app.redis_client = redis_client
+    app.register_blueprint(api_bp)
+    return app
 
 
 if __name__ == "__main__":
+    app = create_app()
     app.run(port=8000, debug=True)
