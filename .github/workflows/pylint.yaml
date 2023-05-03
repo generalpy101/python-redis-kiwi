@@ -1,4 +1,4 @@
-name: Pytest
+name: Pylint
 on:
   schedule:
     - cron: '30 10 * * *'
